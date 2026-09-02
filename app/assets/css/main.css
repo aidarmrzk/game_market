@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+:root {
+  --background: #eceef3;
+  --foreground: #111215;
+  --muted-foreground: #6b7078;
+  --card: #ffffff;
+  --border: #e6e8ee;
+  --accent: #111215;
+  --chip: #f7f8fb;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    border-color: var(--border);
+  }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: Montserrat, sans-serif;
+    background-image:
+      radial-gradient(
+        circle at 18% 8%,
+        rgba(255, 255, 255, 0.72),
+        rgba(255, 255, 255, 0) 38%
+      ),
+      radial-gradient(
+        circle at 86% 0%,
+        rgba(189, 220, 255, 0.36),
+        rgba(189, 220, 255, 0) 32%
+      ),
+      linear-gradient(180deg, #eceef3 0%, #e9ebf1 100%);
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+}
