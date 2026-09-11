@@ -35,5 +35,9 @@ export default defineEventHandler(async (event) => {
     event_id: body.event_id,
     outcome: outcome.kind,
     deferred: outcome.kind === "orphan",
+    expected_amount:
+      "expectedAmount" in outcome ? outcome.expectedAmount : undefined,
+    expected_currency:
+      "expectedCurrency" in outcome ? outcome.expectedCurrency : undefined,
   }
 })

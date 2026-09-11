@@ -4,8 +4,10 @@ import { catalogProducts } from "~~/server/constants/catalog"
 import { testKeyPool } from "~~/server/constants/keys"
 import { testPromocodes } from "~~/server/constants/promocodes"
 import { licenseKeys, products, promoCodes } from "~~/server/db/schema"
+import { expireStaleReservations } from "~~/server/services/reservations"
 
 let bootstrapPromise: Promise<void> | null = null
+let cleanupTimer: ReturnType<typeof setInterval> | null = null
 
 export async function ensureSeedData() {
   if (!bootstrapPromise) {
@@ -16,6 +18,14 @@ export async function ensureSeedData() {
   }
 
   await bootstrapPromise
+
+  if (!cleanupTimer) {
+    cleanupTimer = setInterval(() => {
+      expireStaleReservations().catch(() => {
+        // Keep timer alive, transient DB errors should not crash app.
+      })
+    }, 15000)
+  }
 }
 
 async function seedData() {

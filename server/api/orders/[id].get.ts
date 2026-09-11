@@ -1,4 +1,4 @@
-import { getOrderByExternalId } from "~~/server/services/orders"
+import { getOrderSnapshotByExternalId } from "~~/server/services/orders"
 
 export default defineEventHandler(async (event) => {
   const orderId = getRouterParam(event, "id")
@@ -10,14 +10,15 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const order = await getOrderByExternalId(orderId)
+  const snapshot = await getOrderSnapshotByExternalId(orderId)
 
-  if (!order) {
+  if (!snapshot) {
     throw createError({ statusCode: 404, statusMessage: "Order not found" })
   }
 
   return {
     ok: true,
-    order,
+    order: snapshot.order,
+    reservation: snapshot.reservation,
   }
 })

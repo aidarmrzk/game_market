@@ -40,6 +40,12 @@ export const providerRequestStatusEnum = pgEnum("provider_request_status", [
 
 export const promoTypeEnum = pgEnum("promo_type", ["percent", "amount"])
 
+export const reservationStatusEnum = pgEnum("reservation_status", [
+  "active",
+  "consumed",
+  "expired",
+])
+
 export const products = pgTable("products", {
   sku: text("sku").primaryKey().notNull(),
   name: text("name").notNull(),
@@ -191,6 +197,31 @@ export const promoUses = pgTable(
   ],
 )
 
+export const reservations = pgTable(
+  "reservations",
+  {
+    id: uuid("id").defaultRandom().primaryKey().notNull(),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => orders.id),
+    sku: text("sku").notNull(),
+    licenseKeyId: uuid("license_key_id")
+      .notNull()
+      .references(() => licenseKeys.id),
+    status: reservationStatusEnum("status").notNull().default("active"),
+    reservedAt: timestamp("reserved_at").notNull().defaultNow(),
+    expiresAt: timestamp("expires_at").notNull(),
+    consumedAt: timestamp("consumed_at"),
+    expiredAt: timestamp("expired_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("reservations_order_id_uniq").on(table.orderId),
+    uniqueIndex("reservations_license_key_uniq").on(table.licenseKeyId),
+  ],
+)
+
 export type ProductSchemaSelect = InferSelectModel<typeof products>
 export type ProductSchemaInsert = InferInsertModel<typeof products>
 
@@ -218,3 +249,6 @@ export type PromoCodeSchemaInsert = InferInsertModel<typeof promoCodes>
 
 export type PromoUseSchemaSelect = InferSelectModel<typeof promoUses>
 export type PromoUseSchemaInsert = InferInsertModel<typeof promoUses>
+
+export type ReservationSchemaSelect = InferSelectModel<typeof reservations>
+export type ReservationSchemaInsert = InferInsertModel<typeof reservations>

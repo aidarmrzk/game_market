@@ -3,6 +3,7 @@ import { db } from "~~/server/db"
 import { deliveries, orders } from "~~/server/db/schema"
 import { issueFromProviderA } from "~~/server/services/providers/providerA"
 import { issueFromProviderB } from "~~/server/services/providers/providerB"
+import { consumeReservationForOrder } from "~~/server/services/reservations"
 import {
   ProviderFailureError,
   ProviderOutOfStockError,
@@ -68,6 +69,29 @@ export async function issueOrder(orderId: string): Promise<IssueResult> {
         updatedAt: new Date(),
       })
       .where(eq(orders.id, orderId))
+
+    try {
+      await consumeReservationForOrder(orderId, tx)
+    } catch {
+      await tx
+        .update(orders)
+        .set({
+          status: "out_of_stock",
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, orderId))
+
+      await tx.insert(deliveries).values({
+        orderId,
+        requestId: `req_${orderRow.external_order_id}-${attempt}-reservation`,
+        provider: "reservation",
+        status: "out_of_stock",
+        reason: "reservation_expired",
+        attempt,
+      })
+
+      return { status: "out_of_stock" } satisfies IssueResult
+    }
 
     const requestA = `req_${orderRow.external_order_id}-${attempt}-a`
     const requestB = `req_${orderRow.external_order_id}-${attempt}-b`

@@ -1,6 +1,6 @@
 import { and, asc, eq, sql } from "drizzle-orm"
 import { db } from "~~/server/db"
-import { orders, paymentEvents } from "~~/server/db/schema"
+import { orders, paymentEvents, products } from "~~/server/db/schema"
 import { issueOrder } from "~~/server/services/issuer"
 import type { PaymentWebhookPayload } from "~~/server/services/types"
 
@@ -51,8 +51,10 @@ export async function applyPaymentEvent(eventId: string) {
       status: "paid" | "failed"
       order_external_id: string
       is_applied: boolean
+      amount: number
+      currency: string
     }>(
-      sql`select id, status, order_external_id, is_applied from ${paymentEvents} where event_id = ${eventId} for update`,
+      sql`select id, status, order_external_id, is_applied, amount, currency from ${paymentEvents} where event_id = ${eventId} for update`,
     )
 
     const event = eventRows.rows[0]
@@ -64,8 +66,14 @@ export async function applyPaymentEvent(eventId: string) {
       return { shouldIssue: false, kind: "already_applied" as const }
     }
 
-    const orderRows = await tx.execute<{ id: string; status: string }>(
-      sql`select id, status from ${orders} where external_order_id = ${event.order_external_id} for update`,
+    const orderRows = await tx.execute<{
+      id: string
+      status: string
+      sku: string
+      discount_amount: number
+      currency: string
+    }>(
+      sql`select id, status, sku, discount_amount, currency from ${orders} where external_order_id = ${event.order_external_id} for update`,
     )
 
     const order = orderRows.rows[0]
@@ -90,6 +98,58 @@ export async function applyPaymentEvent(eventId: string) {
         shouldIssue: false,
         kind: "payment_failed" as const,
         orderId: order.id,
+      }
+    }
+
+    const productRows = await tx.execute<{ price: number; currency: string }>(
+      sql`select price, currency from ${products} where sku = ${order.sku} for share`,
+    )
+    const product = productRows.rows[0]
+
+    if (!product) {
+      await tx
+        .update(paymentEvents)
+        .set({ isApplied: true, appliedAt: new Date() })
+        .where(eq(paymentEvents.id, event.id))
+
+      return {
+        shouldIssue: false,
+        kind: "ignored" as const,
+        orderId: order.id,
+      }
+    }
+
+    const expectedAmount = Math.max(
+      0,
+      Number(product.price) - Number(order.discount_amount || 0),
+    )
+    const expectedCurrency = product.currency || order.currency
+
+    if (
+      Number(event.amount) !== expectedAmount ||
+      event.currency !== expectedCurrency
+    ) {
+      await tx
+        .update(orders)
+        .set({
+          baseAmount: Number(product.price),
+          finalAmount: expectedAmount,
+          currency: expectedCurrency,
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, order.id))
+
+      await tx
+        .update(paymentEvents)
+        .set({ isApplied: true, appliedAt: new Date() })
+        .where(eq(paymentEvents.id, event.id))
+
+      return {
+        shouldIssue: false,
+        kind: "price_changed" as const,
+        orderId: order.id,
+        expectedAmount,
+        expectedCurrency,
       }
     }
 

@@ -19,7 +19,7 @@ const emit = defineEmits<{
 
 <template>
   <div
-    class="group flex-1 bg-white rounded-2xl border border-transparent shadow-[0px_11.527974128723145px_24px_#1428501A] transition-all duration-250 ease-out hover:-translate-y-1 hover:border-[#cfd7e6] hover:shadow-[0px_18px_32px_rgba(20,40,80,0.18)] overflow-hidden"
+    class="group w-full bg-white rounded-2xl border border-transparent shadow-[0px_11.527974128723145px_24px_#1428501A] transition-all duration-250 ease-out hover:-translate-y-1 hover:border-[#cfd7e6] hover:shadow-[0px_18px_32px_rgba(20,40,80,0.18)] overflow-hidden"
   >
     <div class="flex flex-col items-start self-stretch">
       <img :src="imageUrl" class="w-[227px] h-[151px] object-fill" />

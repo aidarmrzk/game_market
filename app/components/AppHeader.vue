@@ -1,11 +1,29 @@
 <script setup lang="ts">
 import profileIcon from "~/assets/images/charge/profile.svg"
 
+const route = useRoute()
+const router = useRouter()
 const searchQuery = ref<string>("")
 
 function handlePress() {
   return
 }
+
+watch(
+  () => route.query.q,
+  (q) => {
+    searchQuery.value = typeof q === "string" ? q : ""
+  },
+  { immediate: true },
+)
+
+watch(searchQuery, async (value) => {
+  const query = {
+    ...route.query,
+    q: value.trim() || undefined,
+  }
+  await router.replace({ query })
+})
 </script>
 
 <template>

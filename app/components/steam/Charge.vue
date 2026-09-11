@@ -77,6 +77,17 @@ async function handlePress() {
       return
     }
 
+    const errorCode = error?.data?.data?.code || error?.data?.code
+    const raceMessage = error?.data?.data?.message
+
+    if (errorCode === "SOLD_OUT_RACE") {
+      paymentError.value =
+        typeof raceMessage === "string" && raceMessage.length > 0
+          ? raceMessage
+          : "Товар только что закончился. Обновите каталог и выберите другой вариант."
+      return
+    }
+
     paymentError.value =
       error?.statusCode === 409
         ? "Промокод исчерпан или недоступен"

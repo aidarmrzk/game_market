@@ -26,13 +26,28 @@ export default defineEventHandler(async (event) => {
   }
 
   const baseURL = getRequestURL(event).origin
-  const response = await $fetch<{ ok: boolean }>(
-    `${baseURL}/api/webhook/payment`,
-    {
-      method: "POST",
-      body: payload,
-    },
-  )
+  const response = await $fetch<{
+    ok: boolean
+    outcome?: string
+    expected_amount?: number
+    expected_currency?: string
+  }>(`${baseURL}/api/webhook/payment`, {
+    method: "POST",
+    body: payload,
+  })
+
+  if (response.outcome === "price_changed") {
+    throw createError({
+      statusCode: 409,
+      statusMessage: "Price changed",
+      data: {
+        code: "PRICE_CHANGED",
+        message: "Цена изменилась. Подтвердите оплату по новой сумме.",
+        expectedAmount: response.expected_amount,
+        expectedCurrency: response.expected_currency,
+      },
+    })
+  }
 
   return {
     ok: true,

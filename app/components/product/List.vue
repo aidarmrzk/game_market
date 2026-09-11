@@ -19,20 +19,26 @@ type CreateOrderResponse = {
   ok: boolean
   order: {
     externalOrderId: string
-    finalAmount: number
-    currency: string
   }
 }
 
 const processingCardId = ref<string | null>(null)
 const buyError = ref("")
+const { items: liveStock } = useStockLive()
 
 function handlePress() {
   return
 }
 
 async function handleBuy(card: ProductCard) {
-  if (!card.sku || processingCardId.value) {
+  const availableNow = card.sku
+    ? (liveStock.value[card.sku]?.available ?? 0)
+    : 0
+  if (!card.sku || processingCardId.value || availableNow <= 0) {
+    if (availableNow <= 0) {
+      buyError.value =
+        "Товар только что закончился. Обновите каталог и выберите другой вариант."
+    }
     return
   }
 
@@ -57,18 +63,14 @@ async function handleBuy(card: ProductCard) {
 
     orderId = createResult.order.externalOrderId
 
-    await $fetch("/api/payments/simulate", {
-      method: "POST",
-      body: {
-        order_id: orderId,
-        status: "paid",
-        amount: createResult.order.finalAmount,
-        currency: createResult.order.currency,
-      },
-    })
-
     await navigateTo(`/order/${orderId}`)
-  } catch {
+  } catch (error: any) {
+    const raceMessage = error?.data?.data?.message
+    if (typeof raceMessage === "string" && raceMessage.length > 0) {
+      buyError.value = raceMessage
+      return
+    }
+
     if (orderId) {
       await navigateTo(`/order/${orderId}`)
     } else {
@@ -78,6 +80,26 @@ async function handleBuy(card: ProductCard) {
   } finally {
     processingCardId.value = null
   }
+}
+
+function priceLabel(card: ProductCard) {
+  if (!card.sku) {
+    return card.price
+  }
+
+  const live = liveStock.value[card.sku]
+  if (!live) {
+    return card.price
+  }
+
+  return `${live.price} ${live.currency}`
+}
+
+function canBuyNow(card: ProductCard) {
+  if (!card.sku) {
+    return false
+  }
+  return (liveStock.value[card.sku]?.available ?? 0) > 0
 }
 </script>
 
@@ -100,15 +122,17 @@ async function handleBuy(card: ProductCard) {
       </button>
     </div>
 
-    <div class="flex items-center self-stretch gap-4">
+    <div
+      class="grid self-stretch grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4"
+    >
       <ProductItem
         v-for="card in items"
         :key="card.id"
         :image-url="card.imageUrl"
         :title="card.title"
-        :price="card.price"
+        :price="priceLabel(card)"
         :old-price="card.oldPrice"
-        :can-buy="Boolean(card.sku)"
+        :can-buy="canBuyNow(card)"
         :busy="processingCardId === card.id"
         @buy="handleBuy(card)"
       />

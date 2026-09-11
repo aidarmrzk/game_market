@@ -1,6 +1,10 @@
 import { sql } from "drizzle-orm"
 import { db } from "~~/server/db"
-import { licenseKeys, providerRequests } from "~~/server/db/schema"
+import {
+  licenseKeys,
+  providerRequests,
+  reservations,
+} from "~~/server/db/schema"
 import type {
   ProviderIssueRequest,
   ProviderIssueResult,
@@ -80,23 +84,11 @@ export async function issueFromProvider(
     throw new ProviderFailureError(existing.reason ?? "provider_error")
   }
 
-  if (roll(behavior.failRate)) {
-    await executor.insert(providerRequests).values({
-      requestId: request.requestId,
-      provider: providerName,
-      orderId: request.orderId,
-      sku: request.sku,
-      status: "error",
-      reason: "provider_5xx",
-    })
-    throw new ProviderFailureError()
-  }
-
-  const timeoutAfterIssue = roll(behavior.timeoutRate)
-
   const alreadyAllocated = await executor.execute<{ code: string }>(
     sql`select code from ${licenseKeys} where allocated_to_order_id = ${request.orderId} limit 1`,
   )
+
+  const timeoutAfterIssue = roll(behavior.timeoutRate)
 
   const existingCode = alreadyAllocated.rows[0]?.code
   if (existingCode) {
@@ -120,20 +112,35 @@ export async function issueFromProvider(
     }
   }
 
+  if (roll(behavior.failRate)) {
+    await executor.insert(providerRequests).values({
+      requestId: request.requestId,
+      provider: providerName,
+      orderId: request.orderId,
+      sku: request.sku,
+      status: "error",
+      reason: "provider_5xx",
+    })
+    throw new ProviderFailureError()
+  }
+
   const allocated = await executor.execute<{ code: string }>(sql`
-    with picked as (
-      select id, code
-      from ${licenseKeys}
-      where sku = ${request.sku}
-        and allocated_to_order_id is null
-      order by created_at
+    with reserved_key as (
+      select lk.id, lk.code
+      from ${reservations} r
+      join ${licenseKeys} lk on lk.id = r.license_key_id
+      where r.order_id = ${request.orderId}
+        and r.sku = ${request.sku}
+        and r.status in ('active', 'consumed')
+        and (r.status = 'consumed' or r.expires_at > now())
       limit 1
-      for update skip locked
+      for update of lk skip locked
     )
     update ${licenseKeys} as lk
     set allocated_to_order_id = ${request.orderId}, allocated_at = now()
-    from picked
-    where lk.id = picked.id
+    from reserved_key
+    where lk.id = reserved_key.id
+      and (lk.allocated_to_order_id is null or lk.allocated_to_order_id = ${request.orderId})
     returning lk.code
   `)
 

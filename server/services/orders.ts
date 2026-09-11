@@ -4,6 +4,11 @@ import { orders, products, promoUses } from "~~/server/db/schema"
 import { ensureSeedData } from "~~/server/services/bootstrap"
 import { reservePromoAndCalculateDiscount } from "~~/server/services/pricing"
 import { reconcilePaymentEvents } from "~~/server/services/payments"
+import {
+  expireStaleReservations,
+  getReservationForOrder,
+  reserveKeyForOrder,
+} from "~~/server/services/reservations"
 
 export async function createOrder(input: {
   sku: string
@@ -79,6 +84,8 @@ export async function createOrder(input: {
       })
     }
 
+    await reserveKeyForOrder(order.id, order.sku, tx)
+
     return order
   })
 
@@ -95,7 +102,62 @@ export async function getOrderByExternalId(orderExternalId: string) {
   })
 }
 
+export async function getOrderSnapshotByExternalId(orderExternalId: string) {
+  await ensureSeedData()
+  await expireStaleReservations()
+
+  const order = await db.query.orders.findFirst({
+    where: eq(orders.externalOrderId, orderExternalId),
+  })
+
+  if (!order) {
+    return null
+  }
+
+  const reservation = await getReservationForOrder(order.id)
+
+  return {
+    order,
+    reservation,
+  }
+}
+
 export async function listProducts() {
   await ensureSeedData()
-  return db.query.products.findMany()
+  await expireStaleReservations()
+
+  const rows = await db.execute<{
+    sku: string
+    name: string
+    type: string
+    price: number
+    currency: string
+    image: string
+    available: number
+  }>(sql`
+    select
+      p.sku,
+      p.name,
+      p.type,
+      p.price,
+      p.currency,
+      p.image,
+      greatest(0, coalesce(free.total, 0) - coalesce(resv.total, 0))::int as available
+    from ${products} p
+    left join (
+      select sku, count(*)::int as total
+      from license_keys
+      where allocated_to_order_id is null
+      group by sku
+    ) free on free.sku = p.sku
+    left join (
+      select sku, count(*)::int as total
+      from reservations
+      where status = 'active' and expires_at > now()
+      group by sku
+    ) resv on resv.sku = p.sku
+    order by p.created_at asc
+  `)
+
+  return rows.rows
 }
